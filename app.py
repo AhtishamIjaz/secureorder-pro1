@@ -21,7 +21,6 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
     st.divider()
-    st.info("💡 **LinkedIn Tip:** Show the 'Approval Gate' in your video to demonstrate AI Governance.")
 
 # 3. State Setup
 if "thread_id" not in st.session_state:
@@ -29,7 +28,7 @@ if "thread_id" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# 4. Helper Function: Safe Message Parsing (REFINED)
+# 4. Helper Function: Safe Message Parsing
 def sync_messages_from_state(state_values):
     if not state_values or "messages" not in state_values:
         return st.session_state.messages
@@ -68,8 +67,8 @@ if current_state.next:
 
 # Regular Chat Input
 if prompt := st.chat_input("System command..."):
-    # BREVITY HACK: We inject a hidden instruction for the video
-    demo_prompt = f"{prompt} (NOTE: Be extremely concise and to the point. Use bullet points.)"
+    # Injecting brevity instruction silently
+    demo_prompt = f"{prompt} (NOTE: Be extremely concise. Bullet points only.)"
     
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"): 
