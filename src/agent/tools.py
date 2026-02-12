@@ -76,3 +76,13 @@ def convert_currency(amount: float, from_curr: str = "USD", to_curr: str = "PKR"
         res = requests.get(url).json()
         return f"{amount} {from_curr} is {res['conversion_result']:,.2f} {to_curr}."
     except Exception as e: return f"FX Error: {str(e)}"
+    # --- Exported Tools List ---
+# This list is what researcher.py is looking for!
+tools = [
+    fetch_order_status, 
+    search_inventory, 
+    audit_order_security,
+    get_material_price,
+    get_shipping_weather,
+    convert_currency
+]
