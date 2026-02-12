@@ -40,7 +40,7 @@ DATABASE = {
 @tool
 def fetch_order_status(order_id: str) -> dict:
     """Return structured order info for a given order ID."""
-    order = DATABASE["orders"].get(order_id)
+    order = DATABASE["orders"].get(str(order_id))
     if order:
         return {
             "type": "order",
@@ -69,7 +69,7 @@ def search_inventory(product_name: str) -> dict:
 @tool
 def audit_order_security(order_id: str) -> dict:
     """Return a structured security audit for an order."""
-    order = DATABASE["orders"].get(order_id)
+    order = DATABASE["orders"].get(str(order_id))
     if not order:
         return {"type": "security_audit", "order_id": order_id, "status": "not_found", "risk_score": None, "findings": []}
 
@@ -92,7 +92,7 @@ def audit_order_security(order_id: str) -> dict:
         "text": f"Audit {order_id}: {status} (score={risk_score})"
     }
 
-# --- NEW Enhancement Tools ---
+# --- NEW Enhancement Tools (With Type Safety Fixes) ---
 
 @tool
 def get_material_price(ticker: str) -> str:
@@ -102,28 +102,26 @@ def get_material_price(ticker: str) -> str:
     """
     try:
         data = yf.Ticker(ticker)
-        # fast_info gives the most recent market price
         price = data.fast_info['last_price']
         return f"Live market update: The price for {ticker} is ${price:.2f}."
     except Exception:
-        return f"Error: Could not retrieve live price for {ticker}. Please check the symbol."
+        return f"Error: Could not retrieve live price for {ticker}. Ensure the ticker symbol is correct."
 
 @tool
 def get_shipping_weather(city: str) -> str:
     """
     Check current weather conditions in a city to predict shipping or production delays.
-    Requires OPENWEATHER_API_KEY in environment variables.
     """
     api_key = os.getenv("OPENWEATHER_API_KEY")
     if not api_key:
-        return "Error: OpenWeather API key not found in server settings."
+        return "Error: OpenWeather API key not found in server secrets."
     
     url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
     try:
         response = requests.get(url).json()
         condition = response['weather'][0]['description']
         temp = response['main']['temp']
-        return f"Weather Report for {city}: {condition.capitalize()}, {temp}°C. Check for potential logistics delays if conditions are severe."
+        return f"Weather Report for {city}: {condition.capitalize()}, {temp}°C."
     except Exception:
         return f"Error: Could not fetch weather data for {city}."
 
@@ -131,19 +129,25 @@ def get_shipping_weather(city: str) -> str:
 def convert_currency(amount: float, from_curr: str, to_curr: str) -> str:
     """
     Convert an amount from one currency to another (e.g., USD to PKR).
-    Requires EXCHANGE_RATE_API_KEY in environment variables.
+    'amount' MUST be a numerical value.
     """
     api_key = os.getenv("EXCHANGE_RATE_API_KEY")
     if not api_key:
-        return "Error: ExchangeRate API key not found in server settings."
+        return "Error: ExchangeRate API key not found in server secrets."
 
-    url = f"https://v6.exchangerate-api.com/v6/{api_key}/pair/{from_curr}/{to_curr}/{amount}"
+    # Logic Fix: Ensure amount is a float even if LLM sends it as a string
+    try:
+        clean_amount = float(amount)
+    except (ValueError, TypeError):
+        return "Error: The 'amount' parameter must be a valid number."
+
+    url = f"https://v6.exchangerate-api.com/v6/{api_key}/pair/{from_curr}/{to_curr}/{clean_amount}"
     try:
         response = requests.get(url).json()
         result = response['conversion_result']
-        return f"Currency Conversion: {amount} {from_curr} is approximately {result:.2f} {to_curr}."
+        return f"Currency Conversion: {clean_amount} {from_curr} is approximately {result:.2f} {to_curr}."
     except Exception:
-        return "Error: Currency conversion service is currently unavailable."
+        return "Error: Currency conversion failed. Check your API key or connection."
 
 # --- Human-in-the-Loop Tools ---
 
