@@ -6,3 +6,5 @@ langchain-community
 langchain
 typing-extensions
 pandas
+yfinance
+requests

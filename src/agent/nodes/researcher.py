@@ -2,7 +2,15 @@ import os
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from ..state import AgentState
-from ..tools import fetch_order_status, search_inventory, audit_order_security
+# 1. Import the new tools
+from ..tools import (
+    fetch_order_status, 
+    search_inventory, 
+    audit_order_security,
+    get_material_price,     # Added
+    get_shipping_weather,   # Added
+    convert_currency        # Added
+)
 
 load_dotenv()
 
@@ -13,19 +21,29 @@ def researcher_node(state: AgentState):
         groq_api_key=os.getenv("GROQ_API_KEY")
     )
     
-    # INDUSTRIAL LOGIC: Strict constraints to prevent "tool hallucination"
+    # Updated Industrial Logic to include new capabilities
     system_msg = {
         "role": "system",
         "content": (
-            "You are a Senior Industrial Researcher.\n"
-            "1. Use ONLY the provided tools: fetch_order_status, search_inventory, audit_order_security.\n"
-            "2. DO NOT attempt to call any other functions like 'analyze_data'.\n"
-            "3. If you have the information from a tool, simply provide your response as text.\n"
-            "4. NEVER invent tool names."
+            "You are a Senior Industrial Researcher with real-time data access.\n"
+            "1. Use ONLY these tools: fetch_order_status, search_inventory, audit_order_security, "
+            "get_material_price, get_shipping_weather, convert_currency.\n"
+            "2. If inventory is low, check the live market price using 'get_material_price'.\n"
+            "3. If an order is delayed, check the city's weather via 'get_shipping_weather'.\n"
+            "4. For international clients, use 'convert_currency' for accuracy.\n"
+            "5. Provide raw facts to the Analyzer; do not make final business decisions yourself."
         )
     }
     
-    tools = [fetch_order_status, search_inventory, audit_order_security]
+    # 2. Add new tools to the binding list
+    tools = [
+        fetch_order_status, 
+        search_inventory, 
+        audit_order_security,
+        get_material_price,
+        get_shipping_weather,
+        convert_currency
+    ]
     llm_with_tools = llm.bind_tools(tools)
     
     response = llm_with_tools.invoke([system_msg] + state["messages"])
