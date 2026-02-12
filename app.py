@@ -1,7 +1,7 @@
 import streamlit as st
 import uuid
 import sqlite3
-from src.agent.graph import create_agent # Fixed: Matching the function name
+from src.agent.graph import create_agent
 
 # 1. Page Configuration
 st.set_page_config(page_title="SecureOrder Pro", page_icon="🛡️", layout="wide")
@@ -13,17 +13,6 @@ st.divider()
 # Initialize the agent once
 if "agent" not in st.session_state:
     st.session_state.agent = create_agent()
-
-# Helper to see past sessions (only if using a database like SQLite)
-def get_all_threads():
-    try:
-        conn = sqlite3.connect("checkpoints.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT thread_id FROM checkpoints")
-        threads = [row[0] for row in cursor.fetchall()]
-        conn.close()
-        return threads
-    except Exception: return []
 
 # 2. Sidebar with Session Management
 with st.sidebar:
@@ -45,12 +34,30 @@ if "messages" not in st.session_state:
 if "processing" not in st.session_state:
     st.session_state.processing = False
 
-# 4. Render Conversation
+# 4. Render Conversation History
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
 # 5. Execution Logic
+config = {"configurable": {"thread_id": st.session_state.thread_id}}
+
+# CHECK FOR INTERRUPTS: If the agent is paused, show approval button
+current_state = st.session_state.agent.get_state(config)
+if current_state.next:
+    st.warning("🚦 **Action Pending:** The AI is requesting permission to use tools.")
+    if st.button("✅ Approve & Execute Tool Call"):
+        with st.spinner("Executing approved action..."):
+            # Resuming the graph by passing None as input
+            for event in st.session_state.agent.stream(None, config, stream_mode="values"):
+                if "messages" in event:
+                    st.session_state.messages = [
+                        {"role": m.type if hasattr(m, 'type') else "assistant", "content": m.content} 
+                        for m in event["messages"] if m.content
+                    ]
+            st.rerun()
+
+# Regular Chat Input
 if prompt := st.chat_input("System command...", disabled=st.session_state.processing):
     st.session_state.processing = True
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -58,25 +65,33 @@ if prompt := st.chat_input("System command...", disabled=st.session_state.proces
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        config = {"configurable": {"thread_id": st.session_state.thread_id}}
         with st.spinner("⚡ Processing Industrial Logic..."):
             try:
-                # Streaming response to show node transitions
+                # Start the stream
                 for event in st.session_state.agent.stream(
                     {"messages": [{"role": "user", "content": prompt}]}, 
-                    config
+                    config,
+                    stream_mode="values"
                 ):
-                    if show_trace:
-                        for node in event.keys():
-                            st.caption(f"⚙️ Node: `{node}` completed.")
+                    if show_trace and "messages" in event:
+                        # Optional: Log the last node active
+                        pass
 
-                # Pull the final state to update UI
-                state = st.session_state.agent.get_state(config)
-                final_msg = state.values["messages"][-1]
+                # After streaming, check if we hit an interrupt or finished
+                new_state = st.session_state.agent.get_state(config)
                 
-                # Render the final response
-                st.markdown(final_msg.content)
-                st.session_state.messages.append({"role": "assistant", "content": final_msg.content})
+                # Update UI messages from the Graph State
+                if "messages" in new_state.values:
+                    final_msgs = []
+                    for m in new_state.values["messages"]:
+                        role = "user" if m.type == "human" else "assistant"
+                        if m.content:
+                            final_msgs.append({"role": role, "content": m.content})
+                    st.session_state.messages = final_msgs
+                
+                # If finished, display the last message
+                if not new_state.next:
+                    st.markdown(st.session_state.messages[-1]["content"])
                 
             except Exception as e:
                 st.error(f"Critical System Failure: {str(e)}")
