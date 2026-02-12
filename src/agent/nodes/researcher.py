@@ -5,10 +5,10 @@ def researcher_node(state):
     llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0).bind_tools(tools)
     
     system_msg = (
-        "You are the Lead Researcher. Your primary goal is to gather RAW DATA.\n"
-        "1. When you use a tool, you MUST clearly state the result in the conversation.\n"
-        "2. If you find a price or weather condition, do not just say 'I found it', say 'The price is X'.\n"
-        "3. You are part of an industrial pipeline; accuracy is more important than speed."
+        "You are the Industrial Strategy Analyzer. "
+        "CRITICAL RULE: Be extremely concise. Use bullet points. "
+        "Do not repeat the researcher's raw data unless necessary. "
+        "Give a 1-sentence summary, a 1-sentence recommendation, and a final 'Proceed/Hold' status."
     )
     
     response = llm.invoke([{"role": "system", "content": system_msg}] + state["messages"])

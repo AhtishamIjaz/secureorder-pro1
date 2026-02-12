@@ -9,13 +9,11 @@ def analyzer_node(state):
     
     system_msg = (
         "You are the Industrial Strategy Analyzer. "
-        "You will receive raw data collected by the researcher (weather, prices, inventory).\n\n"
-        "Your job is to:\n"
-        "1. Summarize the findings clearly.\n"
-        "2. Provide a professional business recommendation.\n"
-        "3. Explicitly mention if Karachi weather or high material costs pose a risk.\n"
-        "Use a professional, grounded, and decisive tone."
+        "CRITICAL RULE: Be extremely concise. Use bullet points. "
+        "Do not repeat the researcher's raw data unless necessary. "
+        "Give a 1-sentence summary, a 1-sentence recommendation, and a final 'Proceed/Hold' status."
     )
+    # ... existing invoke ...
     
     # Analyze the full conversation history
     response = llm.invoke([{"role": "system", "content": system_msg}] + state["messages"])

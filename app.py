@@ -21,29 +21,24 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
     st.divider()
-    show_trace = st.checkbox("Show Technical Trace", value=True)
+    st.info("💡 **LinkedIn Tip:** Show the 'Approval Gate' in your video to demonstrate AI Governance.")
 
 # 3. State Setup
 if "thread_id" not in st.session_state:
     st.session_state.thread_id = str(uuid.uuid4())
 if "messages" not in st.session_state:
     st.session_state.messages = []
-if "processing" not in st.session_state:
-    st.session_state.processing = False
 
-# 4. Helper Function: Safe Message Parsing
+# 4. Helper Function: Safe Message Parsing (REFINED)
 def sync_messages_from_state(state_values):
-    """Safely converts LangGraph state messages (dict or objects) to UI list."""
-    if "messages" not in state_values:
-        return []
+    if not state_values or "messages" not in state_values:
+        return st.session_state.messages
     
     new_msgs = []
     for m in state_values["messages"]:
-        # Handle Dictionary format (common after interrupts)
         if isinstance(m, dict):
             content = m.get("content", "")
             role = "user" if m.get("role") in ["user", "human"] else "assistant"
-        # Handle Object format (common during live execution)
         else:
             content = getattr(m, "content", "")
             role = "user" if getattr(m, "type", "") == "human" else "assistant"
@@ -66,40 +61,35 @@ if current_state.next:
     st.warning("🚦 **Action Pending:** The AI is requesting permission to use tools.")
     if st.button("✅ Approve & Execute Tool Call"):
         with st.spinner("Executing approved action..."):
-            # Resuming the graph by passing None
             for event in st.session_state.agent.stream(None, config, stream_mode="values"):
                 if event:
                     st.session_state.messages = sync_messages_from_state(event)
             st.rerun()
 
 # Regular Chat Input
-if prompt := st.chat_input("System command...", disabled=st.session_state.processing):
-    st.session_state.processing = True
+if prompt := st.chat_input("System command..."):
+    # BREVITY HACK: We inject a hidden instruction for the video
+    demo_prompt = f"{prompt} (NOTE: Be extremely concise and to the point. Use bullet points.)"
+    
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"): 
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("⚡ Processing Industrial Logic..."):
+        with st.spinner("⚡ Processing..."):
             try:
-                # Start the stream
                 for event in st.session_state.agent.stream(
-                    {"messages": [{"role": "user", "content": prompt}]}, 
+                    {"messages": [{"role": "user", "content": demo_prompt}]}, 
                     config,
                     stream_mode="values"
-                ):
-                    pass # Values mode updates the state; we sync after loop
+                ): pass 
 
-                # Sync final state to UI
                 final_state = st.session_state.agent.get_state(config)
                 st.session_state.messages = sync_messages_from_state(final_state.values)
                 
-                # Display final answer if not interrupted
                 if not final_state.next and st.session_state.messages:
                     st.markdown(st.session_state.messages[-1]["content"])
                 
             except Exception as e:
-                st.error(f"Critical System Failure: {str(e)}")
-    
-    st.session_state.processing = False
+                st.error(f"System Error: {str(e)}")
     st.rerun()
