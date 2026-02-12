@@ -1,108 +1,55 @@
 import streamlit as st
-import uuid
-import sqlite3
-from src.agent.graph import create_agent
-from langchain_core.messages import HumanMessage
+from src.agent.graph import graph_builder
+from langgraph.checkpoint.memory import InMemorySaver # New: Memory Import
 
-# 1. Page Configuration & Styling
-st.set_page_config(page_title="SecureOrder Pro", layout="wide")
+# --- Page Config ---
+st.set_page_config(page_title="SecureOrder-Pro: Industrial AI", layout="wide")
+st.title("🏭 SecureOrder-Pro: Industrial AI")
+st.subheader("Llama 3.3 70B + Multi-Agent Strategy")
 
-st.markdown("""
-    <style>
-    .main { background-color: #0e1117; }
-    .stChatMessage { border-radius: 15px; padding: 10px; margin-bottom: 10px; }
-    .sidebar-history-btn { margin-bottom: 5px; text-align: left; }
-    </style>
-    """, unsafe_allow_html=True)
+# --- Initialize Session State ---
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-# 2. Database Logic
-def init_db():
-    conn = sqlite3.connect("chat_history.db")
-    c = conn.cursor()
-    # Content stores the message, session_id groups the chat
-    c.execute('''CREATE TABLE IF NOT EXISTS messages 
-                 (session_id TEXT, role TEXT, content TEXT)''')
-    conn.commit()
-    return conn
+# New: Initialize the Memory Checkpointer in Session State
+if "checkpointer" not in st.session_state:
+    st.session_state.checkpointer = InMemorySaver()
 
-def save_msg(session_id, role, content):
-    conn = init_db()
-    c = conn.cursor()
-    c.execute("INSERT INTO messages VALUES (?, ?, ?)", (session_id, role, content))
-    conn.commit()
-
-def load_msgs(session_id):
-    conn = init_db()
-    c = conn.cursor()
-    c.execute("SELECT role, content FROM messages WHERE session_id = ?", (session_id,))
-    return [{"role": r, "content": c} for r, c in c.fetchall()]
-
-def get_all_sessions():
-    conn = init_db()
-    c = conn.cursor()
-    # This gets the first message of every session to use as a "Title"
-    c.execute("SELECT DISTINCT session_id FROM messages")
-    return [row[0] for row in c.fetchall()]
-
-# 3. Sidebar: The History Archive
-if "thread_id" not in st.session_state:
-    st.session_state.thread_id = str(uuid.uuid4())
-
-with st.sidebar:
-    st.title("🛡️ Admin Panel")
-    
-    if st.button("➕ New Conversation", use_container_width=True):
-        st.session_state.thread_id = str(uuid.uuid4())
-        st.rerun()
-
-    st.divider()
-    st.markdown("### 📜 Past Conversations")
-    
-    # Get all unique past sessions
-    sessions = get_all_sessions()
-    for s_id in sessions:
-        # Create a button for each past session
-        # Shortening the ID for the button label
-        if st.button(f"Chat: {s_id[:8]}...", key=s_id, use_container_width=True):
-            st.session_state.thread_id = s_id
-            st.rerun()
-
-# 4. Agent Initialization
 if "agent" not in st.session_state:
-    st.session_state.agent = create_agent()
+    # Compile the graph with the checkpointer for persistence
+    st.session_state.agent = graph_builder.compile(checkpointer=st.session_state.checkpointer)
 
-# Load current session messages
-chat_history = load_msgs(st.session_state.thread_id)
+# --- Chat Interface ---
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
-st.title("SecureOrder-Pro: Industrial AI")
-st.caption(f"Current Session: {st.session_state.thread_id}")
-
-# Display history
-for m in chat_history:
-    with st.chat_message(m["role"]):
-        st.markdown(m["content"])
-
-# 5. Input Logic
-if prompt := st.chat_input("Ask about orders or inventory..."):
+if prompt := st.chat_input("Enter your industrial query..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
-    save_msg(st.session_state.thread_id, "user", prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("⚡ Processing..."):
-            config = {"configurable": {"thread_id": st.session_state.thread_id}}
-            result = st.session_state.agent.invoke(
-                {"messages": [HumanMessage(content=prompt)]}, 
-                config
-            )
+        with st.spinner("🔄 Processing Industrial Logic..."):
+            # Configuration for the checkpointer (Memory Bucket)
+            # This 'thread_id' keeps the conversation history linked
+            config = {"configurable": {"thread_id": "industrial_session_1"}}
             
-            final_text = ""
-            for msg in reversed(result["messages"]):
-                if msg.content and isinstance(msg.content, str):
-                    final_text = msg.content
-                    break
+            # Invoke the agent with history awareness
+            try:
+                result = st.session_state.agent.invoke(
+                    {"messages": st.session_state.messages},
+                    config=config
+                )
+                
+                # Get the final response from the last node (Analyzer)
+                final_response = result["messages"][-1].content
+                st.markdown(final_response)
+                st.session_state.messages.append({"role": "assistant", "content": final_response})
             
-            st.markdown(final_text)
-            save_msg(st.session_state.thread_id, "assistant", final_text)
-    
-    st.rerun()
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+                if "429" in str(e):
+                    st.warning("Rate limit hit. Waiting for token bucket to refill...")
+                elif "400" in str(e):
+                    st.warning("Syntax error in tool call. Checking model formatting...")
