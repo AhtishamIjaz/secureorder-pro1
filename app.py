@@ -1,55 +1,85 @@
 import streamlit as st
-from src.agent.graph import graph_builder
-from langgraph.checkpoint.memory import InMemorySaver # New: Memory Import
+import uuid
+import sqlite3
+from src.agent.graph import create_agent # Fixed: Matching the function name
 
-# --- Page Config ---
-st.set_page_config(page_title="SecureOrder-Pro: Industrial AI", layout="wide")
-st.title("🏭 SecureOrder-Pro: Industrial AI")
-st.subheader("Llama 3.3 70B + Multi-Agent Strategy")
+# 1. Page Configuration
+st.set_page_config(page_title="SecureOrder Pro", page_icon="🛡️", layout="wide")
 
-# --- Initialize Session State ---
+st.markdown("# 🛡️ **SecureOrder-Pro: Industrial AI**")
+st.markdown("### *Professional Audit & Inventory Intelligence*")
+st.divider()
+
+# Initialize the agent once
+if "agent" not in st.session_state:
+    st.session_state.agent = create_agent()
+
+# Helper to see past sessions (only if using a database like SQLite)
+def get_all_threads():
+    try:
+        conn = sqlite3.connect("checkpoints.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT thread_id FROM checkpoints")
+        threads = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return threads
+    except Exception: return []
+
+# 2. Sidebar with Session Management
+with st.sidebar:
+    st.header("📜 Session Manager")
+    
+    if st.button("➕ New Industrial Session", use_container_width=True):
+        st.session_state.thread_id = str(uuid.uuid4())
+        st.session_state.messages = []
+        st.rerun()
+    
+    st.divider()
+    show_trace = st.checkbox("Show Technical Trace", value=True)
+
+# 3. State Setup
+if "thread_id" not in st.session_state:
+    st.session_state.thread_id = str(uuid.uuid4())
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "processing" not in st.session_state:
+    st.session_state.processing = False
 
-# New: Initialize the Memory Checkpointer in Session State
-if "checkpointer" not in st.session_state:
-    st.session_state.checkpointer = InMemorySaver()
+# 4. Render Conversation
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-if "agent" not in st.session_state:
-    # Compile the graph with the checkpointer for persistence
-    st.session_state.agent = graph_builder.compile(checkpointer=st.session_state.checkpointer)
-
-# --- Chat Interface ---
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-
-if prompt := st.chat_input("Enter your industrial query..."):
+# 5. Execution Logic
+if prompt := st.chat_input("System command...", disabled=st.session_state.processing):
+    st.session_state.processing = True
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
+    with st.chat_message("user"): 
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("🔄 Processing Industrial Logic..."):
-            # Configuration for the checkpointer (Memory Bucket)
-            # This 'thread_id' keeps the conversation history linked
-            config = {"configurable": {"thread_id": "industrial_session_1"}}
-            
-            # Invoke the agent with history awareness
+        config = {"configurable": {"thread_id": st.session_state.thread_id}}
+        with st.spinner("⚡ Processing Industrial Logic..."):
             try:
-                result = st.session_state.agent.invoke(
-                    {"messages": st.session_state.messages},
-                    config=config
-                )
+                # Streaming response to show node transitions
+                for event in st.session_state.agent.stream(
+                    {"messages": [{"role": "user", "content": prompt}]}, 
+                    config
+                ):
+                    if show_trace:
+                        for node in event.keys():
+                            st.caption(f"⚙️ Node: `{node}` completed.")
+
+                # Pull the final state to update UI
+                state = st.session_state.agent.get_state(config)
+                final_msg = state.values["messages"][-1]
                 
-                # Get the final response from the last node (Analyzer)
-                final_response = result["messages"][-1].content
-                st.markdown(final_response)
-                st.session_state.messages.append({"role": "assistant", "content": final_response})
-            
+                # Render the final response
+                st.markdown(final_msg.content)
+                st.session_state.messages.append({"role": "assistant", "content": final_msg.content})
+                
             except Exception as e:
-                st.error(f"Error: {str(e)}")
-                if "429" in str(e):
-                    st.warning("Rate limit hit. Waiting for token bucket to refill...")
-                elif "400" in str(e):
-                    st.warning("Syntax error in tool call. Checking model formatting...")
+                st.error(f"Critical System Failure: {str(e)}")
+    
+    st.session_state.processing = False
+    st.rerun()

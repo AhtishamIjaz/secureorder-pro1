@@ -4,15 +4,13 @@ from langgraph.checkpoint.memory import MemorySaver
 from .state import AgentState
 from .nodes.researcher import researcher_node
 from .nodes.analyzer import analyzer_node
-
-# 1. Import your new tools from tools.py
 from .tools import (
     fetch_order_status, 
     search_inventory, 
     audit_order_security,
-    get_material_price,     # Added
-    get_shipping_weather,   # Added
-    convert_currency        # Added
+    get_material_price,
+    get_shipping_weather,
+    convert_currency
 )
 
 def router(state: AgentState):
@@ -24,8 +22,6 @@ def router(state: AgentState):
 def create_agent():
     workflow = StateGraph(AgentState)
     
-    # 2. Add the new tools to the ToolNode list
-    # This acts as the "Toolbox" for your agents
     executable_tools = [
         fetch_order_status, 
         search_inventory, 
@@ -44,4 +40,5 @@ def create_agent():
     workflow.add_edge("tools", "researcher")
     workflow.add_edge("analyzer", END)
 
+    # We use MemorySaver() here for short-term persistence
     return workflow.compile(checkpointer=MemorySaver())
