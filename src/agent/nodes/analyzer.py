@@ -1,27 +1,21 @@
-import os
 from langchain_groq import ChatGroq
-from ..state import AgentState
 
-def analyzer_node(state: AgentState):
-    llm = ChatGroq(
-        model="llama-3.1-70b-versatile", # Using a larger model for better reasoning
-        temperature=0.1,
-        groq_api_key=os.getenv("GROQ_API_KEY")
+def analyzer_node(state):
+    """
+    The Analyzer node synthesizes the raw tool data into a final 
+    business recommendation for the user.
+    """
+    # Updated to the latest Llama 3.3 model
+    llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.5)
+    
+    system_msg = (
+        "You are the Industrial Strategy Analyzer. "
+        "You will receive raw data from tools (weather, prices, inventory). "
+        "Your job is to provide a clear, concise summary and a recommendation. "
+        "Always highlight any risks, such as high material prices or shipping delays."
     )
     
-    system_msg = {
-        "role": "system",
-        "content": (
-            "You are a Strategic Manufacturing Consultant.\n"
-            "Your job is to take the raw data provided by the Researcher and create an Executive Summary.\n\n"
-            "STRUCTURE YOUR RESPONSE:\n"
-            "1. STATUS OVERVIEW: Briefly state what was found.\n"
-            "2. IMPACT ANALYSIS: How do the current prices or weather affect our production?\n"
-            "3. ACTION PLAN: Provide 2-3 clear steps (e.g., 'Buy now while prices are low' or 'Inform the client of a 2-day weather delay').\n"
-            "Keep your tone professional, concise, and data-driven."
-        )
-    }
+    # The last message in state is usually the tool output
+    response = llm.invoke([{"role": "system", "content": system_msg}] + state["messages"])
     
-    # The Analyzer looks at the entire conversation, including the tool outputs
-    response = llm.invoke([system_msg] + state["messages"])
     return {"messages": [response]}
