@@ -1,6 +1,5 @@
 import streamlit as st
 import uuid
-import sqlite3
 from src.agent.graph import create_agent
 
 # 1. Page Configuration
@@ -17,12 +16,10 @@ if "agent" not in st.session_state:
 # 2. Sidebar with Session Management
 with st.sidebar:
     st.header("📜 Session Manager")
-    
     if st.button("➕ New Industrial Session", use_container_width=True):
         st.session_state.thread_id = str(uuid.uuid4())
         st.session_state.messages = []
         st.rerun()
-    
     st.divider()
     show_trace = st.checkbox("Show Technical Trace", value=True)
 
@@ -34,27 +31,45 @@ if "messages" not in st.session_state:
 if "processing" not in st.session_state:
     st.session_state.processing = False
 
-# 4. Render Conversation History
+# 4. Helper Function: Safe Message Parsing
+def sync_messages_from_state(state_values):
+    """Safely converts LangGraph state messages (dict or objects) to UI list."""
+    if "messages" not in state_values:
+        return []
+    
+    new_msgs = []
+    for m in state_values["messages"]:
+        # Handle Dictionary format (common after interrupts)
+        if isinstance(m, dict):
+            content = m.get("content", "")
+            role = "user" if m.get("role") in ["user", "human"] else "assistant"
+        # Handle Object format (common during live execution)
+        else:
+            content = getattr(m, "content", "")
+            role = "user" if getattr(m, "type", "") == "human" else "assistant"
+        
+        if content:
+            new_msgs.append({"role": role, "content": content})
+    return new_msgs
+
+# 5. Render Conversation History
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# 5. Execution Logic
+# 6. Execution Logic
 config = {"configurable": {"thread_id": st.session_state.thread_id}}
 
-# CHECK FOR INTERRUPTS: If the agent is paused, show approval button
+# CHECK FOR INTERRUPTS: Approval Gate
 current_state = st.session_state.agent.get_state(config)
 if current_state.next:
     st.warning("🚦 **Action Pending:** The AI is requesting permission to use tools.")
     if st.button("✅ Approve & Execute Tool Call"):
         with st.spinner("Executing approved action..."):
-            # Resuming the graph by passing None as input
+            # Resuming the graph by passing None
             for event in st.session_state.agent.stream(None, config, stream_mode="values"):
-                if "messages" in event:
-                    st.session_state.messages = [
-                        {"role": m.type if hasattr(m, 'type') else "assistant", "content": m.content} 
-                        for m in event["messages"] if m.content
-                    ]
+                if event:
+                    st.session_state.messages = sync_messages_from_state(event)
             st.rerun()
 
 # Regular Chat Input
@@ -73,24 +88,14 @@ if prompt := st.chat_input("System command...", disabled=st.session_state.proces
                     config,
                     stream_mode="values"
                 ):
-                    if show_trace and "messages" in event:
-                        # Optional: Log the last node active
-                        pass
+                    pass # Values mode updates the state; we sync after loop
 
-                # After streaming, check if we hit an interrupt or finished
-                new_state = st.session_state.agent.get_state(config)
+                # Sync final state to UI
+                final_state = st.session_state.agent.get_state(config)
+                st.session_state.messages = sync_messages_from_state(final_state.values)
                 
-                # Update UI messages from the Graph State
-                if "messages" in new_state.values:
-                    final_msgs = []
-                    for m in new_state.values["messages"]:
-                        role = "user" if m.type == "human" else "assistant"
-                        if m.content:
-                            final_msgs.append({"role": role, "content": m.content})
-                    st.session_state.messages = final_msgs
-                
-                # If finished, display the last message
-                if not new_state.next:
+                # Display final answer if not interrupted
+                if not final_state.next and st.session_state.messages:
                     st.markdown(st.session_state.messages[-1]["content"])
                 
             except Exception as e:
