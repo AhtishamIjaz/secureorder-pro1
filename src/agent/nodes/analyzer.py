@@ -2,7 +2,7 @@ import os
 from langchain_groq import ChatGroq
 
 # Initialize LLM (Ensure your API key is in environment variables)
-llm = ChatGroq(model="llama-3.3-70b-versatile")
+llm = ChatGroq(model="llama-3.1-8b-instant")
 
 def analyzer_node(state):
     """
