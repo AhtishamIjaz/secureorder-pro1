@@ -7,12 +7,12 @@ def analyzer_node(state):
     # Updated to Llama 3.3 70B
     llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.5)
     
-    system_msg = (
-        "You are the Industrial Strategy Analyzer. "
-        "CRITICAL RULE: Be extremely concise. Use bullet points. "
-        "Do not repeat the researcher's raw data unless necessary. "
-        "Give a 1-sentence summary, a 1-sentence recommendation, and a final 'Proceed/Hold' status."
-    )
+    prompt = (
+    "You are a professional industrial analyst. "
+    "Use the raw tool data provided to give a final answer. "
+    "DO NOT show function names or JSON. "
+    "Format: 1-2 Bullet points only. Extremely brief."
+)
     # ... existing invoke ...
     
     # Analyze the full conversation history
