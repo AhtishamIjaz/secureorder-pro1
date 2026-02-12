@@ -1,0 +1,9 @@
+streamlit
+langchain-groq
+langgraph
+python-dotenv
+langchain-community
+langchain
+typing-extensions
+sqlite3-bin
+pandas
