@@ -5,31 +5,18 @@ from .state import AgentState
 from .nodes.researcher import researcher_node
 from .nodes.analyzer import analyzer_node
 from .tools import (
-    fetch_order_status, 
-    search_inventory, 
-    audit_order_security,
-    get_material_price,
-    get_shipping_weather,
-    convert_currency
+    fetch_order_status, search_inventory, audit_order_security,
+    get_material_price, get_shipping_weather, convert_currency
 )
 
 def router(state: AgentState):
-    last_message = state["messages"][-1]
-    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        return "tools"
-    return "analyzer"
+    last_msg = state["messages"][-1]
+    return "tools" if hasattr(last_msg, "tool_calls") and last_msg.tool_calls else "analyzer"
 
 def create_agent():
     workflow = StateGraph(AgentState)
-    
-    executable_tools = [
-        fetch_order_status, 
-        search_inventory, 
-        audit_order_security,
-        get_material_price, 
-        get_shipping_weather, 
-        convert_currency
-    ]
+    executable_tools = [fetch_order_status, search_inventory, audit_order_security, 
+                        get_material_price, get_shipping_weather, convert_currency]
     
     workflow.add_node("researcher", researcher_node)
     workflow.add_node("analyzer", analyzer_node)
@@ -40,5 +27,8 @@ def create_agent():
     workflow.add_edge("tools", "researcher")
     workflow.add_edge("analyzer", END)
 
-    # We use MemorySaver() here for short-term persistence
-    return workflow.compile(checkpointer=MemorySaver())
+    # Professional Change: interrupt_before creates a manual approval gate
+    return workflow.compile(
+        checkpointer=MemorySaver(),
+        interrupt_before=["tools"] 
+    )
